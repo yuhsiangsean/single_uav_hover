@@ -32,15 +32,17 @@ class SingleUAVHover(Node):
         # Parameters
         #
         # namespace: PX4 uXRCE-DDS topic prefix. Defaults to
-        # "/px4_1", matching how this workspace runs a single PX4
-        # SITL instance (`px4 -i 1`, same instance-numbering
-        # convention as three_uav_formation). For real hardware,
-        # override via --ros-args -p namespace:=<value> to match
-        # whatever namespace the flight controller's uXRCE-DDS
-        # client is configured with.
+        # "/MAV4", matching the real hardware setup this vehicle
+        # flies with (mocap_px4_bridge on mav1-leader publishes mocap
+        # odometry to /MAV4/fmu/in/vehicle_visual_odometry, so PX4's
+        # uXRCE-DDS client on this vehicle is namespaced /MAV4). For
+        # SITL or a different vehicle, override via
+        # --ros-args -p namespace:=<value> to match whatever
+        # namespace the flight controller's uXRCE-DDS client is
+        # actually configured with.
         # ============================================================
 
-        self.declare_parameter('namespace', '/px4_1')
+        self.declare_parameter('namespace', '/MAV4')
         self.declare_parameter('hover_altitude_m', 0.5)
         self.declare_parameter('climb_rate_mps', 0.3)
         self.declare_parameter('land_descent_rate_mps', 0.3)
