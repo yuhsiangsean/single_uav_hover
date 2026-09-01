@@ -27,7 +27,10 @@ class HoverCommander(Node):
 
     def run(self):
 
-        prompt = '\n[Command] 1=hover(0.5m)  2=land  > '
+        prompt = (
+            '\n[Command] 1=hover(0.5m)  2=land  '
+            '3=+X 0.5m  4=+Y 0.5m  > '
+        )
 
         while rclpy.ok():
 
@@ -36,9 +39,9 @@ class HoverCommander(Node):
             except EOFError:
                 break
 
-            if line not in ('1', '2'):
+            if line not in ('1', '2', '3', '4'):
 
-                print(f'Unknown command "{line}", use 1 or 2')
+                print(f'Unknown command "{line}", use 1, 2, 3 or 4')
 
                 continue
 

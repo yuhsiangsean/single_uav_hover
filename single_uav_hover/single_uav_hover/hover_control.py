@@ -46,6 +46,8 @@ class SingleUAVHover(Node):
         self.declare_parameter('hover_altitude_m', 0.5)
         self.declare_parameter('climb_rate_mps', 0.3)
         self.declare_parameter('land_descent_rate_mps', 0.3)
+        self.declare_parameter('horizontal_speed_mps', 0.2)
+        self.declare_parameter('horizontal_step_m', 0.5)
 
         self.namespace = self.get_parameter(
             'namespace'
@@ -61,6 +63,14 @@ class SingleUAVHover(Node):
 
         self.land_descent_rate = self.get_parameter(
             'land_descent_rate_mps'
+        ).get_parameter_value().double_value
+
+        self.horizontal_speed = self.get_parameter(
+            'horizontal_speed_mps'
+        ).get_parameter_value().double_value
+
+        self.horizontal_step = self.get_parameter(
+            'horizontal_step_m'
         ).get_parameter_value().double_value
 
         # NED z is negative up; hover_altitude_m is given as a
@@ -134,9 +144,10 @@ class SingleUAVHover(Node):
         )
 
         # Command from the separate hover_commander terminal (see
-        # command_callback()): 1 = takeoff to hover, 2 = land. Kept
-        # in its own process so the operator's input prompt doesn't
-        # get scrolled away by this node's own status logging.
+        # command_callback()): 1 = takeoff to hover, 2 = land,
+        # 3 = +X step, 4 = +Y step. Kept in its own process so the
+        # operator's input prompt doesn't get scrolled away by this
+        # node's own status logging.
 
         self.create_subscription(
             Int32,
@@ -164,7 +175,15 @@ class SingleUAVHover(Node):
         # (0.0) so the setpoint stream PX4 requires before it will
         # accept an OFFBOARD switch is already flowing from node
         # startup, well before command 1 is ever sent.
+        self.target_x = 0.0
+        self.target_y = 0.0
         self.target_z = 0.0
+
+        # Horizontal targets (goal_x/goal_y) that target_x/target_y
+        # ramp toward at horizontal_speed while hovering - commands
+        # 3/4 add horizontal_step to these, they never jump directly.
+        self.goal_x = 0.0
+        self.goal_y = 0.0
 
         self.dt = 0.1
 
@@ -218,13 +237,13 @@ class SingleUAVHover(Node):
     # point - this package only ever hovers in place)
     # ================================================================
 
-    def publish_setpoint(self, z):
+    def publish_setpoint(self, x, y, z):
 
         msg = TrajectorySetpoint()
 
         msg.timestamp = self.timestamp()
 
-        msg.position = [0.0, 0.0, float(z)]
+        msg.position = [float(x), float(y), float(z)]
 
         msg.yaw = 0.0
 
@@ -353,11 +372,47 @@ class SingleUAVHover(Node):
                     f'(state="{self.state}")'
                 )
 
+        elif command == 3:
+
+            if self.state == 'hovering':
+
+                self.goal_x += self.horizontal_step
+
+                self.get_logger().info(
+                    'Command 3 received: moving to '
+                    f'x={self.goal_x:.2f}m'
+                )
+
+            else:
+
+                self.get_logger().info(
+                    f'Command 3 ignored: not hovering '
+                    f'(state="{self.state}")'
+                )
+
+        elif command == 4:
+
+            if self.state == 'hovering':
+
+                self.goal_y += self.horizontal_step
+
+                self.get_logger().info(
+                    'Command 4 received: moving to '
+                    f'y={self.goal_y:.2f}m'
+                )
+
+            else:
+
+                self.get_logger().info(
+                    f'Command 4 ignored: not hovering '
+                    f'(state="{self.state}")'
+                )
+
         else:
 
             self.get_logger().info(
-                f'Unknown command "{command}", use 1 (hover) or '
-                '2 (land)'
+                f'Unknown command "{command}", use 1 (hover), '
+                '2 (land), 3 (+X 0.5m) or 4 (+Y 0.5m)'
             )
 
     # ================================================================
@@ -370,6 +425,10 @@ class SingleUAVHover(Node):
 
             self.get_logger().info(
                 f'state={self.state}, '
+                f'x={self.position.x:.2f} '
+                f'(target={self.target_x:.2f}), '
+                f'y={self.position.y:.2f} '
+                f'(target={self.target_y:.2f}), '
                 f'z={self.position.z:.2f} '
                 f'(target={self.target_z:.2f}), '
                 f'ARMED={self.is_armed()}, '
@@ -388,7 +447,7 @@ class SingleUAVHover(Node):
         # running even while idle on the ground.
 
         self.publish_offboard_control()
-        self.publish_setpoint(self.target_z)
+        self.publish_setpoint(self.target_x, self.target_y, self.target_z)
 
         if self.state == 'idle':
             return
@@ -458,6 +517,28 @@ class SingleUAVHover(Node):
 
             self.target_z = self.hover_z
 
+            if self.target_x < self.goal_x:
+                self.target_x = min(
+                    self.target_x + self.horizontal_speed * self.dt,
+                    self.goal_x
+                )
+            elif self.target_x > self.goal_x:
+                self.target_x = max(
+                    self.target_x - self.horizontal_speed * self.dt,
+                    self.goal_x
+                )
+
+            if self.target_y < self.goal_y:
+                self.target_y = min(
+                    self.target_y + self.horizontal_speed * self.dt,
+                    self.goal_y
+                )
+            elif self.target_y > self.goal_y:
+                self.target_y = max(
+                    self.target_y - self.horizontal_speed * self.dt,
+                    self.goal_y
+                )
+
         elif self.state == 'landing':
 
             self.target_z = min(
@@ -506,7 +587,7 @@ class SingleUAVHover(Node):
             z = min(z + self.land_descent_rate * self.dt, 0.0)
 
             self.publish_offboard_control()
-            self.publish_setpoint(z)
+            self.publish_setpoint(self.target_x, self.target_y, z)
 
             rclpy.spin_once(self, timeout_sec=self.dt)
 
