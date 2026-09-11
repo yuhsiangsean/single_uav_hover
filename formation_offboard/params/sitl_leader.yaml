@@ -1,0 +1,64 @@
+# MAV1 - LeaderO
+# 用法: ros2 launch formation_offboard single_node.launch.py params_file:=params/leader.yaml
+/**:
+  ros__parameters:
+    mav_id: 1
+    is_leader: true
+    hover_altitude: 0.5       # 原地起飛後爬升的高度 (公尺)
+    yaw: 0.0
+    start_topic: "/formation/start"
+
+    # ---- 起飛同步「集合點(barrier)」----
+    # 三台機都要填一樣的完整名單，才能互相知道要等誰。
+    # 不用跨機時鐘同步：全部到齊後，各機各自本地倒數 liftoff_grace_period_s 秒才真正起飛。
+    formation_mav_ids: [1, 2]
+    liftoff_grace_period_s: 1.0
+    liftoff_after_arm_timeout_s: 10.0  # 第二層barrier：等大家都arm成功才一起爬升，超時就放棄等待
+
+    # ---- 安全圍籬 ----
+    # x/y: mocap 世界座標絕對範圍（場地正中央為原點），跟哪一台機無關
+    # z: 相對自己 home 的高度限制
+    fence_enabled: true
+    fence_world_x_min: -1.7
+    fence_world_x_max: 1.7
+    fence_world_y_min: -1.5
+    fence_world_y_max: 1.5
+    fence_height_max: 1.4     # home 之上最多 1.4m（記得要大於 hover_altitude 留餘裕）
+    fence_height_min: 0.0     # 不能低於 home（起飛點）
+
+    # ---- setpoint 單次移動量限速（保留當最後一道保險，CBF 生效後理論上很少會被觸發到）----
+    max_horizontal_speed_mps: 0.5
+    max_vertical_speed_mps: 0.3
+
+    # ---- yaw 限速 ----
+    max_yaw_rate_deg_s: 30.0
+
+    # ---- Leader 搖桿 teleop（搖桿=期望速度輸入）----
+    # leader 全程留在 Offboard；操作者請只動搖桿的 pitch/roll 桿，
+    # 不要再用遙控器切飛行模式離開 Offboard——node 不會再把控制權讓出去。
+    teleop_enabled: true
+    rc_topic_suffix: "/fmu/out/manual_control_setpoint"
+    rc_deadband: 0.05             # 搖桿中立點死區
+    teleop_max_speed_mps: 0.3      # 搖桿超過死區時的固定水平速度 (m/s)，等速、不看推多深
+    fence_brake_distance_m: 0.35  # CBF 電子圍籬煞車距離 (m)，跟 near_fence_margin_m 的警告距離同步
+
+    # ---- 降落 (/formation/land) ----
+    landed_height_margin_m: 0.05   # 離 home(地面)多近算「已經落地」，只影響 log 提醒，不會自動 disarm
+    landing_crawl_speed_mps: 0.05     # 接近預估地面高度時，throttle 手動下降收斂到的爬行速度（非0，避免卡死）
+    landing_slowdown_radius_m: 0.3   # 離預估地面高度還有多少公尺開始線性減速
+
+    # ---- 碰撞避免 ----
+    # leader 現在全程留在 Offboard，我們發的 setpoint 就是真正會被執行的指令，
+    collision_avoidance_enabled: true
+    min_separation_m: 0.9   # leader(250) vs follower(430) 估算需求 ≈ 0.83m + 餘裕（保留數值，供 follower 端參考對稱）
+    collision_brake_distance_m: 0.3   # 開始煞車的水平距離，須小於 min_separation_m
+    collision_watch_mav_ids: [2,3]
+
+    # ---- 狀態 log ----
+    status_log_interval_ms: 2000.0   # 每隔多久印一次目前飛行狀態 (mode/armed/position/圍籬距離)
+    near_fence_margin_m: 0.3         # 離圍籬任一面小於這個距離，log 會升級成 WARN
+
+    # ---- 位置合理性檢查（事故分析後新增，own + leader 都會套用）----
+    max_plausible_speed_mps: 2.0      # 隱含速度超過這個值(m/s)就判定不合理，拒絕採用
+    position_reject_streak_limit: 3   # 連續幾次不合理才判定「這個位置來源不可信」，觸發凍結
+    position_recovery_streak_required: 5  # 已判定不可信後，要連續幾筆都合理才真正恢復信任

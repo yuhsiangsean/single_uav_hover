@@ -1,0 +1,85 @@
+# MAV2 - Follower left
+/**:
+  ros__parameters:
+    mav_id: 2
+    is_leader: false
+    leader_mav_id: 1
+    follow_leader: false      # 懸停測試先關閉；要進編隊模式時改 true
+    yaw_follow_leader: false
+    auto_calibrate_offset: true   # 用初始實際擺放位置自動反推 offset
+
+    # ---- 隊形 preset ----
+    # 剛起飛（第一次 auto-calibrate）時：不管是哪個 preset，都用「當下實際擺放位置」
+    # 反推 offset，不吃這裡的表定值，這樣不用精確測量起飛位置。
+    # 飛行中用 `ros2 param set formation_mode ...` 切換 preset 時：直接鎖定表定值，
+    # 飛機會真的飛去新隊形的相對位置（見 formation_offboard_control.cpp
+    # update_active_offset_from_preset() 的 lock_offset 參數）。
+    formation_preset_names: ["echelon", "parallel"]
+    formation_preset_offset_x: [-1.0, 0.0]
+    formation_preset_offset_y: [-1.0, -1.2]
+    formation_preset_offset_z: [0.0, 0.0]
+    formation_mode: "echelon"   # 預設用 echelon（起飛後自動從初始擺放反推）
+
+    hover_altitude: 0.5
+    yaw: 0.0
+    start_topic: "/formation/start"
+    leader_timeout_ms: 500.0
+
+    # ---- yaw_follow_leader 的 heading 來源 ----
+    # "px4"（預設，不用填）：讀 vehicle_local_position.heading，受 PX4 EKF2 內部的
+    #   yaw_align/heading_good_for_control 門檻限制（磁力計要飛到 >1.5m 才會重新對齊、
+    #   mocap_px4_bridge.cpp 目前用 POSE_FRAME_FRD 會讓 vision 永遠無法單獨完成
+    #   yaw_align）。這組已經在 SITL 完整驗證過動態飛行穩定（磁力計+vision 位置）。
+    # "mocap"：改直接訂閱 mocap_px4_bridge.cpp 發布給 PX4 的
+    #   /MAV{leader}/fmu/in/vehicle_visual_odometry，完全繞開上面那串 EKF2 門檻，
+    #   不需要飛到特定高度、也不用等磁力計收斂。只有真機+mocap 場地能用，SITL 沒有
+    #   這個 topic，不要在 *_sitl.yaml 設這個。
+    # yaw_source: "mocap"
+    # mocap_odometry_topic_suffix: "/fmu/in/vehicle_visual_odometry"
+    # mocap_yaw_timeout_ms: 500.0
+
+    # ---- 起飛同步「集合點(barrier)」----
+    # 三台機都要填一樣的完整名單，才能互相知道要等誰。
+    formation_mav_ids: [1, 2, 3]
+    liftoff_grace_period_s: 1.0
+    liftoff_after_arm_timeout_s: 10.0  # 第二層barrier：等大家都arm成功才一起爬升，超時就放棄等待
+
+    # ---- 安全圍籬 ----
+    # x/y 現在改成 CBF 平滑收斂：靠近邊界 fence_brake_distance_m 內開始線性煞車，
+    # 貼到邊界時朝那個方向的速度剛好變成 0（懸停），不再是舊版硬 clamp 的貼牆感。
+    fence_enabled: true
+    fence_world_x_min: -1.7
+    fence_world_x_max: 1.7
+    fence_world_y_min: -1.5
+    fence_world_y_max: 1.5
+    fence_height_max: 1.4
+    fence_height_min: 0.0
+    fence_brake_distance_m: 0.35   # 跟 leader 共用同一個 CBF 電子圍籬機制
+
+    # follower 用內部影子狀態追蹤 leader+offset 目標，離目標多近開始減速（比例式）
+    follower_track_slowdown_radius_m: 0.3
+
+    # ---- 降落 (/formation/land) ----
+    landed_height_margin_m: 0.05   # 離 home(地面)多近算「已經落地」，只影響 log 提醒，不會自動 disarm
+
+    # ---- setpoint 單次移動量限速（保留當最後一道保險）----
+    max_horizontal_speed_mps: 0.5
+    max_vertical_speed_mps: 0.3
+
+    # ---- yaw 限速 ----
+    max_yaw_rate_deg_s: 30.0
+
+    # ---- 碰撞避免 ----
+    collision_avoidance_enabled: true
+    min_separation_m: 1.0
+    collision_brake_distance_m: 0.3   # 開始煞車的水平距離，須小於 min_separation_m
+    collision_watch_mav_ids: [3]
+
+    # ---- 狀態 log ----
+    status_log_interval_ms: 2000.0
+    near_fence_margin_m: 0.3
+
+    # ---- 位置合理性檢查（事故分析後新增，own + leader 都會套用）----
+    max_plausible_speed_mps: 2.0      # 隱含速度超過這個值(m/s)就判定不合理，拒絕採用
+    position_reject_streak_limit: 3   # 連續幾次不合理才判定「這個位置來源不可信」，觸發凍結
+    position_recovery_streak_required: 5  # 已判定不可信後，要連續幾筆都合理才真正恢復信任

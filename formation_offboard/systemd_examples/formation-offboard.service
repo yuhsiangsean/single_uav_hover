@@ -1,0 +1,26 @@
+# 放到 /etc/systemd/system/formation-offboard.service
+# 每台 RPi 的 ExecStart 要指到「自己這架機」的 params yaml
+# (leader 的 RPi 指到 leader.yaml，follower 的 RPi 指到 follower_left.yaml / follower_right.yaml)
+#
+# 啟用：
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now formation-offboard.service
+
+[Unit]
+Description=Formation Offboard Control Node
+After=micro-xrce-agent.service network.target
+Requires=micro-xrce-agent.service
+
+[Service]
+# 注意: bash -c 是為了先 source ROS2 環境，再啟動 node
+ExecStart=/bin/bash -c "source /opt/ros/humble/setup.bash && \
+  source /home/pi/ros2_ws/install/setup.bash && \
+  ros2 launch formation_offboard single_node.launch.py \
+    params_file:=/home/pi/ros2_ws/src/formation_offboard/params/leader.yaml"
+Restart=always
+RestartSec=2
+User=pi
+Environment=ROS_DOMAIN_ID=0
+
+[Install]
+WantedBy=multi-user.target

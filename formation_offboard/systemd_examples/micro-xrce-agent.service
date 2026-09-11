@@ -1,0 +1,19 @@
+# 放到 /etc/systemd/system/micro-xrce-agent.service
+# 依實際接線調整 --dev 跟 baudrate（要跟 PX4 SERIAL 參數一致，常見 921600）
+#
+# 啟用：
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now micro-xrce-agent.service
+
+[Unit]
+Description=uXRCE-DDS Agent (bridge PX4 <-> ROS2)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/MicroXRCEAgent serial --dev /dev/ttyAMA0 -b 921600
+Restart=always
+RestartSec=2
+User=pi
+
+[Install]
+WantedBy=multi-user.target

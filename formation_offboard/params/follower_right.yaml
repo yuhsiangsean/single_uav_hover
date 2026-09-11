@@ -1,0 +1,73 @@
+# MAV3 - Follower right
+/**:
+  ros__parameters:
+    mav_id: 3
+    is_leader: false
+    leader_mav_id: 1
+    follow_leader: false
+    yaw_follow_leader: false
+    auto_calibrate_offset: true
+
+    # ---- 隊形 preset ----
+    formation_preset_names: ["echelon", "parallel"]
+    formation_preset_offset_x: [-1.0, 0.0]
+    formation_preset_offset_y: [1.0, 1.2]
+    formation_preset_offset_z: [0.0, 0.0]
+    formation_mode: "echelon"
+
+    hover_altitude: 0.5
+    yaw: 0.0
+    start_topic: "/formation/start"
+    leader_timeout_ms: 500.0
+
+    # ---- yaw_follow_leader 的 heading 來源 ----
+    # 詳細說明見 follower_left.yaml 同一段註解。
+    # yaw_source: "mocap"
+    # mocap_odometry_topic_suffix: "/fmu/in/vehicle_visual_odometry"
+    # mocap_yaw_timeout_ms: 500.0
+
+    # ---- 起飛同步「集合點(barrier)」----
+    # 三台機都要填一樣的完整名單，才能互相知道要等誰。
+    formation_mav_ids: [1, 2, 3]
+    liftoff_grace_period_s: 1.0
+    liftoff_after_arm_timeout_s: 10.0  # 第二層barrier：等大家都arm成功才一起爬升，超時就放棄等待
+
+    # ---- 安全圍籬 ----
+    # x/y 現在改成 CBF 平滑收斂：靠近邊界 fence_brake_distance_m 內開始線性煞車，
+    # 貼到邊界時朝那個方向的速度剛好變成 0（懸停），不再是舊版硬 clamp 的貼牆感。
+    fence_enabled: true
+    fence_world_x_min: -1.7
+    fence_world_x_max: 1.7
+    fence_world_y_min: -1.5
+    fence_world_y_max: 1.5
+    fence_height_max: 1.4
+    fence_height_min: 0.0
+    fence_brake_distance_m: 0.35   # 跟 leader 共用同一個 CBF 電子圍籬機制
+
+    # follower 用內部影子狀態追蹤 leader+offset 目標，離目標多近開始減速（比例式）
+    follower_track_slowdown_radius_m: 0.3
+
+    # ---- 降落 (/formation/land) ----
+    landed_height_margin_m: 0.05   # 離 home(地面)多近算「已經落地」，只影響 log 提醒，不會自動 disarm
+
+    # ---- setpoint 單次移動量限速（保留當最後一道保險）----
+    max_horizontal_speed_mps: 0.5
+    max_vertical_speed_mps: 0.3
+
+    # ---- yaw 限速 ----
+    max_yaw_rate_deg_s: 30.0
+
+    # ---- 碰撞避免 ----
+    collision_avoidance_enabled: true
+    min_separation_m: 1.0
+    collision_brake_distance_m: 0.3   # 開始煞車的水平距離，須小於 min_separation_m
+    collision_watch_mav_ids: [2]
+
+    # ---- 狀態 log ----
+    status_log_interval_ms: 2000.0
+    near_fence_margin_m: 0.3
+
+    # ---- 位置合理性檢查（事故分析後新增，own + leader 都會套用）----
+    max_plausible_speed_mps: 2.0      # 隱含速度超過這個值(m/s)就判定不合理，拒絕採用
+    position_reject_streak_limit: 3   # 連續幾次不合理才判定「這個位置來源不可信」，觸發凍結
+    position_recovery_streak_required: 5  # 已判定不可信後，要連續幾筆都合理才真正恢復信任
